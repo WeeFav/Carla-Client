@@ -325,8 +325,8 @@ class LaneMarkings():
         return lanes_list, x_lanes_list
     
 
-    def lanemarkings_for_render(self, lanes_list):
-        lanes_list_render = []
+    def lanemarkings_processed(self, lanes_list):
+        lanes_list_processed = []
 
         for i in range(len(lanes_list)):
             lane = lanes_list[i]
@@ -345,8 +345,8 @@ class LaneMarkings():
 
             if segments:
                 max_seg = max(segments, key=len)
-                lanes_list_render.append(max_seg)
+                lanes_list_processed.append(max_seg)
             else:
-                lanes_list_render.append([])
+                lanes_list_processed.append([])
         
-        return lanes_list_render
+        return lanes_list_processed

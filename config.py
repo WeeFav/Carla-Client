@@ -19,7 +19,7 @@ for y in range(row_anchor_start, image_height, 10):
 	h_samples.append(y)
 
 # World
-town = 'Town10HD_Opt'
+town = 'Town04_Opt'
 num_vehicles = 0
 # weather = carla.WeatherParameters(
 # 	cloudiness=0,

@@ -55,7 +55,7 @@ class CarlaGame():
 
         self.vehicle_manager.spawn_vehicles()
 
-        self.lanemarkings = LaneMarkings(self.client, self.world)
+        # self.lanemarkings = LaneMarkings(self.client, self.world)
 
         self.tick_counter = 0
 
@@ -66,7 +66,7 @@ class CarlaGame():
         cv2.namedWindow("inst_background", cv2.WINDOW_NORMAL)
         cv2.resizeWindow("inst_background", 640, 360)
 
-        # self.lanedet = LaneDet()
+        self.lanedet = LaneDet()
         self.bev = BEV(self.camera_spawnpoint)
 
 
@@ -85,28 +85,19 @@ class CarlaGame():
         surface.blit(image_surface, (0, 0))
 
 
-    def render_display(self, image_rgb, image_depth, lanes_list):
+    def render_display(self, image_rgb, image_depth, lanes_list_processed):
         # Draw the display.
-        image_depth = self.reshape_image(image_depth)
         self.draw_image(self.display, image_rgb)
         
         inst_background = np.zeros_like(image_rgb)
 
-
         # Draw lane on pygame window and binary mask
         if(cfg.render_lanes):
-            lanes_list_render = self.lanemarkings.lanemarkings_for_render(lanes_list)
-            # lanes_list_render = lanes_list
-
-            points_2d = [np.array(lane) for lane in lanes_list_render if lane]
-            if points_2d:
-                self.bev.get_bev_view(np.concatenate(points_2d), image_depth)
-
-            for i in range(len(lanes_list_render)):
-                for x, y, in lanes_list_render[i]:
+            for i in range(len(lanes_list_processed)):
+                for x, y, in lanes_list_processed[i]:
                     pygame.draw.circle(self.display, self.RGB_colors[i], (x, y), 3, 2)
-                cv2.polylines(inst_background, np.int32([lanes_list_render[i]]), isClosed=False, color=self.BGR_colors[i], thickness=5)
-        
+                cv2.polylines(inst_background, np.int32([lanes_list_processed[i]]), isClosed=False, color=self.BGR_colors[i], thickness=5)                
+
         pygame.display.flip()
         cv2.imshow("inst_background", inst_background)
         cv2.waitKey(1)
@@ -116,6 +107,7 @@ class CarlaGame():
         with CarlaSyncMode(self.world, self.tm, self.camera_rgb, self.camera_semseg, self.camera_depth, fps=cfg.fps) as sync_mode:
             try:
                 while True:
+                    ### pygame interaction ###
                     for event in pygame.event.get():
                         if event.type == pygame.QUIT:
                             pygame.quit()
@@ -128,6 +120,8 @@ class CarlaGame():
                                 print("right")
                                 self.tm.force_lane_change(self.ego_vehicle, True)
                     
+
+                    ### Manually run simulation ###
                     if not cfg.auto_run:
                         waiting = True
                         while waiting:
@@ -139,39 +133,48 @@ class CarlaGame():
                             if keys[pygame.K_SPACE]:
                                 waiting = False
 
+
+                    ### Respawn stuck vehicle ###
                     if self.tick_counter % (cfg.respawn * cfg.fps) == 0:
                         self.vehicle_manager.check_vehicle()
                 
-                    # clock tick
+
+                    ### Run simulation ###
                     self.pygame_clock.tick()
                     snapshot, image_rgb, image_semseg, image_depth = sync_mode.tick(timeout=1.0)
+                    image_rgb = self.reshape_image(image_rgb)
+                    image_depth = self.reshape_image(image_depth)
+                    image_semseg.convert(carla.ColorConverter.CityScapesPalette)
+                    image_semseg = self.reshape_image(image_semseg)
                     self.tick_counter += 1
 
-                    # Get current waypoints
+
+                    ### Get current waypoints ### 
                     waypoint = self.map.get_waypoint(self.ego_vehicle.get_location())
                     waypoint_list = []
                     for i in range(0, cfg.number_of_lanepoints):
                         waypoint_list.append(waypoint.next(i + cfg.meters_per_frame)[0])
-                    
-                    # Convert and reshape image from Nx1 to shape(720, 1280, 3)
-                    image_semseg.convert(carla.ColorConverter.CityScapesPalette)
-                    image_semseg = self.reshape_image(image_semseg)
-                    
-                    # Calculate lanepoints for all lanes
-                    lanes_list, x_lanes_list = self.lanemarkings.detect_lanemarkings(waypoint_list, image_semseg, self.camera_rgb)
-
-                    image_rgb = self.reshape_image(image_rgb)
-
-                    # img = Image.fromarray(image_rgb, mode="RGB") 
-                    # lanes_list = self.lanedet.predict(img)
-                    
-                    # if cfg.draw3DLanes:
-                    #     for waypoint in waypoint_list:
-                    #         self.world.debug.draw_point(location=waypoint.transform.location, size=0.05, life_time=2 * (1/cfg.fps), persistent_lines=False)                    
+                    if cfg.draw3DLanes:
+                        for waypoint in waypoint_list:
+                            self.world.debug.draw_point(location=waypoint.transform.location, size=0.05, life_time=2 * (1/cfg.fps), persistent_lines=False)                    
                     
 
-                    # Show lanes on pygame
-                    self.render_display(image_rgb, image_depth, lanes_list)
+                    ### Calculate lanepoints for all lanes ###
+                    # lanes_list, x_lanes_list = self.lanemarkings.detect_lanemarkings(waypoint_list, image_semseg, self.camera_rgb)
+                    # lanes_list_processed = self.lanemarkings.lanemarkings_processed(lanes_list)
+                    
+
+                    ### Predict lanepoints for all lanes ###
+                    img = Image.fromarray(image_rgb, mode="RGB") 
+                    lanes_list_processed = self.lanedet.predict(img)
+                    
+
+                    ### Get bird eye view ###
+                    bev_image = self.bev.get_bev_view(lanes_list_processed, image_depth)
+
+
+                    ### Render display ###
+                    self.render_display(image_rgb, image_depth, lanes_list_processed)
 
             finally:
                 self.vehicle_manager.destroy()

@@ -2,7 +2,6 @@ import carla
 import numpy as np   
 import config as cfg 
 import math
-import time
 import cv2
 
 
@@ -12,7 +11,8 @@ class BEV():
         self.c_y = cfg.image_height / 2
         self.f = cfg.image_width / (2 * math.tan(cfg.fov * math.pi / 360))
 
-        self.camera_extrinsic = self.get_camera_extrinsic_matrix(camera_spawnpoint)
+        self.vehicle_to_camera_matrix = self.get_vehicle_to_camera_matrix(camera_spawnpoint)
+        self.camera_to_vehicle_matrix = np.linalg.inv(self.vehicle_to_camera_matrix)
 
         # BEV area in meters (vehicle-centered)
         self.x_range = (-10, 40)  # From 10 meters behind to 40 meters front
@@ -24,7 +24,7 @@ class BEV():
         self.bev_height = int((self.x_range[1] - self.x_range[0]) / self.resolution)   # rows
 
 
-    def get_camera_extrinsic_matrix(self, camera_spawnpoint):
+    def get_vehicle_to_camera_matrix(self, camera_spawnpoint):
         rotation = camera_spawnpoint.rotation
         location = camera_spawnpoint.location
 
@@ -33,35 +33,50 @@ class BEV():
         yaw   = math.radians(rotation.yaw)
         roll  = math.radians(rotation.roll)
 
-        # Create rotation matrix from pitch, yaw, roll (extrinsic to camera)
-        Rx = np.array([
+        # Create rotation matrix from pitch, yaw, roll
+        R_pitch = np.array([
             [1, 0, 0],
             [0, np.cos(pitch), -np.sin(pitch)],
             [0, np.sin(pitch), np.cos(pitch)]
         ])
-        Ry = np.array([
+
+        R_yaw = np.array([
             [np.cos(yaw), 0, np.sin(yaw)],
             [0, 1, 0],
             [-np.sin(yaw), 0, np.cos(yaw)]
         ])
-        Rz = np.array([
+
+        R_roll = np.array([
             [np.cos(roll), -np.sin(roll), 0],
             [np.sin(roll), np.cos(roll), 0],
             [0, 0, 1]
         ])
 
-        R = Rz @ Ry @ Rx
-        T = np.array([location.x, location.y, location.z]).reshape((3, 1))
+        R_rotation = R_roll @ R_yaw @ R_pitch
+
+        # Rotation matrix for axes conversion (vehicle to camera)
+        R_axes = [
+            [0, 1, 0],  # z_camera = x_vehicle
+            [0, 0, -1], # x_camera = y_vehicle
+            [1, 0, 0]   # y_camera = -z_vehicle
+        ]
+
+        R = R_rotation @ R_axes
+
+        # T_vehicle is the translation of the camera in vehicle frame
+        # However, the vehicle_to_camera_matrix do rotation first then translation, which means a point is rotated into camera frame first, then translate according to camera axes
+        # So the translation must be in camera frame 
+        T_vehicle = np.array([location.x, location.y, location.z]).reshape((3, 1))
+        T_camera = R @ T_vehicle
 
         # Combine into 4x4 matrix
-        extrinsic = np.eye(4)
-        extrinsic[:3, :3] = R
-        extrinsic[:3, 3] = T.flatten()
+        vehicle_to_camera_matrix = np.eye(4)
+        vehicle_to_camera_matrix[:3, :3] = R
+        vehicle_to_camera_matrix[:3, 3] = T_camera.flatten()
 
-        return extrinsic
+        return vehicle_to_camera_matrix
 
 
-    # 2D pixel to 3D camera coordinates 
     def pixel_to_camera(self, points_2d, image_depth):
         x_coords = points_2d[:, 0].astype(int) # (N,)
         y_coords = points_2d[:, 1].astype(int)
@@ -78,37 +93,55 @@ class BEV():
         y_camera = (y_coords - self.c_y) * depth_in_meters / self.f
         z_camera = depth_in_meters
 
-        points_camera = np.stack((x_camera, y_camera, z_camera, np.ones_like(x_camera)), axis=0).T
+        points_camera = np.stack([x_camera, y_camera, z_camera], axis=1)
 
         return points_camera
 
 
     def camera_to_vehicle(self, points_camera):
-        camera_to_vehicle = np.linalg.inv(self.camera_extrinsic)
-        points_vehicle = camera_to_vehicle @ points_camera.T
+        homo = np.ones((points_camera.shape[0], 1))
+        points_camera = np.concatenate((points_camera, homo), axis=1)
+        points_vehicle = (self.camera_to_vehicle_matrix @ points_camera.T).T
         return points_vehicle
 
 
-    def vehicle_to_bev(self, x, y):
-        u = int((x - self.x_range[0]) / self.resolution)
-        v = int((self.y_range[1] - y) / self.resolution)
-        # u = int((y - self.y_range[0]) / self.resolution)  # left to right becomes u=0 to width
-        # v = int((self.x_range[1] - x) / self.resolution)  # front to back becomes v=0 to height
-        return u, v
+    def vehicle_to_bev(self, xs, ys):
+        us = ((ys - self.y_range[0]) / self.resolution).astype(np.int32)  # left to right becomes u=0 to width
+        vs = ((self.x_range[1] - xs) / self.resolution).astype(np.int32)  # front to back becomes v=0 to height
+        return us, vs
 
 
-    def get_bev_view(self, points_2d, image_depth):
-        bev_image = np.zeros((self.bev_height, self.bev_width), dtype=np.uint8)
+    def get_bev_view(self, lanes_list_processed, image_depth):
+        bev_image = np.zeros((self.bev_height, self.bev_width, 3), dtype=np.uint8)
 
-        points_camera = self.pixel_to_camera(points_2d, image_depth)
-        points_vehicle = self.camera_to_vehicle(points_camera)
+        u0, v0 = self.vehicle_to_bev(np.array([0]), np.array([0]))
+        cv2.circle(bev_image, center=(u0[0], v0[0]), radius=3, color=(0, 0, 255), thickness=-1)     
 
-        for x, y, _, _ in points_vehicle.T:  # points_vehicle: list of (X, Y) in vehicle frame
-            if self.x_range[0] <= x <= self.x_range[1] and self.y_range[0] <= y <= self.y_range[1]:
-                u, v = self.vehicle_to_bev(x, y)
-                bev_image[v, u] = 255  # mark pixel
+        for i in range(len(lanes_list_processed)):
+            if lanes_list_processed[i]:
+                points_2d = np.array(lanes_list_processed[i])
+                points_camera = self.pixel_to_camera(points_2d, image_depth)
+                points_vehicle = self.camera_to_vehicle(points_camera) # (N, 4)
 
-        bev_color = cv2.cvtColor(bev_image, cv2.COLOR_GRAY2BGR)
-        cv2.imshow("BEV", bev_color)
+                xs = points_vehicle[:, 0]
+                ys = points_vehicle[:, 1]
+
+                mask = (
+                    (xs >= self.x_range[0]) & (xs <= self.x_range[1]) &
+                    (ys >= self.y_range[0]) & (ys <= self.y_range[1])
+                )
+
+                xs_valid = xs[mask]
+                ys_valid = ys[mask]
+
+                us, vs = self.vehicle_to_bev(xs_valid, ys_valid)
+                pts = np.stack([us, vs], axis=1)               # shape (N, 2)
+                pts = pts.reshape((-1, 1, 2)).astype(np.int32) # shape (N, 1, 2), int32 type
+
+                cv2.polylines(bev_image, [pts], isClosed=False, color=(255, 255, 255), thickness=1)                
+
+        cv2.imshow("BEV", bev_image)
         cv2.waitKey(1)
+
+        return bev_image
 
