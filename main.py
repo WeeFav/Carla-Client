@@ -14,7 +14,7 @@ from carla_sync_mode import CarlaSyncMode
 from lanemarkings import LaneMarkings
 from vehicle_manager import VehicleManager
 from lane_detection.lanedet import LaneDet
-from bev import BEV
+from pure_pursuit import PurePursuit
 
 class CarlaGame():
     def __init__(self):
@@ -55,8 +55,6 @@ class CarlaGame():
 
         self.vehicle_manager.spawn_vehicles()
 
-        # self.lanemarkings = LaneMarkings(self.client, self.world)
-
         self.tick_counter = 0
 
         self.RGB_colors = [(0, 255, 0), (255, 0, 0), (255, 255, 0), (0, 0, 255)]
@@ -66,8 +64,14 @@ class CarlaGame():
         cv2.namedWindow("inst_background", cv2.WINDOW_NORMAL)
         cv2.resizeWindow("inst_background", 640, 360)
 
-        self.lanedet = LaneDet()
-        self.bev = BEV(self.camera_spawnpoint)
+        if cfg.predict_lane:
+            self.lanedet = LaneDet()
+        else:
+            self.lanemarkings = LaneMarkings(self.client, self.world)
+
+        wheelbase, rear_axle_offset = self.vehicle_manager.get_ego_vehicle_wheel()
+        self.pure_pursuit = PurePursuit(self.camera_spawnpoint, wheelbase, rear_axle_offset)
+        print(wheelbase, rear_axle_offset)
 
 
     def reshape_image(self, image):
@@ -159,18 +163,18 @@ class CarlaGame():
                             self.world.debug.draw_point(location=waypoint.transform.location, size=0.05, life_time=2 * (1/cfg.fps), persistent_lines=False)                    
                     
 
-                    ### Calculate lanepoints for all lanes ###
-                    # lanes_list, x_lanes_list = self.lanemarkings.detect_lanemarkings(waypoint_list, image_semseg, self.camera_rgb)
-                    # lanes_list_processed = self.lanemarkings.lanemarkings_processed(lanes_list)
+                    if cfg.predict_lane:
+                        ### Predict lanepoints for all lanes ###
+                        img = Image.fromarray(image_rgb, mode="RGB") 
+                        lanes_list_processed = self.lanedet.predict(img)
+                    else:
+                        ### Calculate lanepoints for all lanes ###
+                        lanes_list, x_lanes_list = self.lanemarkings.detect_lanemarkings(waypoint_list, image_semseg, self.camera_rgb)
+                        lanes_list_processed = self.lanemarkings.lanemarkings_processed(lanes_list)
                     
 
-                    ### Predict lanepoints for all lanes ###
-                    img = Image.fromarray(image_rgb, mode="RGB") 
-                    lanes_list_processed = self.lanedet.predict(img)
-                    
-
-                    ### Get bird eye view ###
-                    bev_image = self.bev.get_bev_view(lanes_list_processed, image_depth)
+                    ### Pure pursuit ###
+                    self.pure_pursuit.run(lanes_list_processed, image_depth)
 
 
                     ### Render display ###

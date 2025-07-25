@@ -102,7 +102,31 @@ class BEV():
         homo = np.ones((points_camera.shape[0], 1))
         points_camera = np.concatenate((points_camera, homo), axis=1)
         points_vehicle = (self.camera_to_vehicle_matrix @ points_camera.T).T
+        return points_vehicle[:, :3] # (N, 3)
+    
+
+    def vehicle_to_rear(self, points_vehicle, rear_axle_offset):
+        points_vehicle[:, 0] = points_vehicle[:, 0] - rear_axle_offset
         return points_vehicle
+    
+
+    def pixel_to_rear(self, lanes_list_processed, image_depth, rear_axle_offset):
+        lanes_rear = []
+
+        for i in range(len(lanes_list_processed)):
+            if lanes_list_processed[i]:
+                points_2d = np.array(lanes_list_processed[i])
+                points_camera = self.pixel_to_camera(points_2d, image_depth)
+                points_vehicle = self.camera_to_vehicle(points_camera) # (N, 3)
+                points_rear = self.vehicle_to_rear(points_vehicle, rear_axle_offset)
+                xs = points_rear[:, 0]
+                ys = points_rear[:, 1]
+                pts = np.stack([xs, ys], axis=1) # (N, 2)
+            else:
+                pts = []
+            lanes_rear.append(pts)
+        
+        return lanes_rear
 
 
     def vehicle_to_bev(self, xs, ys):
@@ -121,24 +145,24 @@ class BEV():
             if lanes_list_processed[i]:
                 points_2d = np.array(lanes_list_processed[i])
                 points_camera = self.pixel_to_camera(points_2d, image_depth)
-                points_vehicle = self.camera_to_vehicle(points_camera) # (N, 4)
+                points_vehicle = self.camera_to_vehicle(points_camera) # (N, 3)
 
                 xs = points_vehicle[:, 0]
                 ys = points_vehicle[:, 1]
 
-                mask = (
-                    (xs >= self.x_range[0]) & (xs <= self.x_range[1]) &
-                    (ys >= self.y_range[0]) & (ys <= self.y_range[1])
-                )
+                # mask = (
+                #     (xs >= self.x_range[0]) & (xs <= self.x_range[1]) &
+                #     (ys >= self.y_range[0]) & (ys <= self.y_range[1])
+                # )
 
-                xs_valid = xs[mask]
-                ys_valid = ys[mask]
+                # xs_valid = xs[mask]
+                # ys_valid = ys[mask]
 
-                us, vs = self.vehicle_to_bev(xs_valid, ys_valid)
-                pts = np.stack([us, vs], axis=1)               # shape (N, 2)
-                pts = pts.reshape((-1, 1, 2)).astype(np.int32) # shape (N, 1, 2), int32 type
+                # us, vs = self.vehicle_to_bev(xs_valid, ys_valid)
+                # pts = np.stack([us, vs], axis=1)               # shape (N, 2)
+                # pts = pts.reshape((-1, 1, 2)).astype(np.int32) # shape (N, 1, 2), int32 type
 
-                cv2.polylines(bev_image, [pts], isClosed=False, color=(255, 255, 255), thickness=1)                
+                # cv2.polylines(bev_image, [pts], isClosed=False, color=(255, 255, 255), thickness=1)                
 
         cv2.imshow("BEV", bev_image)
         cv2.waitKey(1)

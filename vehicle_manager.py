@@ -22,11 +22,11 @@ class VehicleManager():
         # Spawn ego vehicle
         bp_ego_vehicle = random.choice(self.blueprint_library.filter('vehicle.ford.mustang'))
         bp_ego_vehicle.set_attribute('role_name', 'hero')
-        ego_vehicle = self.world.spawn_actor(bp_ego_vehicle, random.choice(self.spawn_points))
-        ego_vehicle.set_autopilot(True, self.tm.get_port())
-        self.tm.update_vehicle_lights(ego_vehicle, True)
+        self.ego_vehicle = self.world.spawn_actor(bp_ego_vehicle, random.choice(self.spawn_points))
+        self.ego_vehicle.set_autopilot(True, self.tm.get_port())
+        self.tm.update_vehicle_lights(self.ego_vehicle, True)
 
-        return ego_vehicle
+        return self.ego_vehicle
     
 
     def spawn_vehicles(self):
@@ -85,3 +85,19 @@ class VehicleManager():
         for vehicle in self.world.get_actors().filter('*vehicle*'):
             vehicle.destroy()
         print("All vehicles destroyed")
+
+
+    def get_ego_vehicle_wheel(self):
+        [front_left_wheel, front_right_wheel, back_left_wheel, back_right_wheel] = self.ego_vehicle.get_physics_control().wheels
+        
+        print(front_left_wheel.position.x, front_left_wheel.position.y)
+        print(front_right_wheel.position.x, front_right_wheel.position.y)
+        print(back_left_wheel.position.x, back_left_wheel.position.y)
+        print(back_right_wheel.position.x, back_right_wheel.position.y)
+
+        assert False
+
+        wheelbase = front_left_wheel.position.x - back_left_wheel.position.x
+        rear_axle_offset = -back_left_wheel.position.x
+        return wheelbase, rear_axle_offset
+
