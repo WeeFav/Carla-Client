@@ -35,4 +35,4 @@ weather = carla.WeatherParameters.ClearNoon
 # Mode
 auto_run = True
 respawn = 50 # in seconds
-predict_lane = False
+predict_lane = True

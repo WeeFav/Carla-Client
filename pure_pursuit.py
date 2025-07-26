@@ -11,9 +11,9 @@ class PurePursuit():
         self.rear_axle_offset = rear_axle_offset
         self.ego_vehicle = ego_vehicle
 
-        self.k_v = 2.0
-        self.ld_min = 1.0
-        self.ld_max = 10.0
+        self.k_v = 0.4
+        self.ld_min = 3.0
+        self.ld_max = 20.0
 
     
     def get_centerline(self, left_lanemarking: np.ndarray, right_lanemarking: np.ndarray, lane_width):
@@ -49,7 +49,7 @@ class PurePursuit():
         """
         speed in m/s in vehicle frame
         """
-        ld = self.k_v * abs(speed[0])
+        ld = self.k_v * speed
         return np.clip(ld, self.ld_min, self.ld_max)
     
 
@@ -88,10 +88,8 @@ class PurePursuit():
         if len(centerline) > 0:
             # compute lookahead distance
             vel = self.ego_vehicle.get_velocity()
-            v_world = np.array([vel.x, vel.y, vel.z])
-            R_world_to_vehicle = np.array(self.ego_vehicle.get_transform().get_inverse_matrix())[:3, :3]
-            v_vehicle = R_world_to_vehicle @ v_world
-            ld = self.get_lookahead_distance(v_vehicle)
+            speed = np.linalg.norm(np.array([vel.x, vel.y, vel.z]))
+            ld = self.get_lookahead_distance(speed)
 
             # find target point
             target = self.find_target_point(centerline, ld)
@@ -100,11 +98,9 @@ class PurePursuit():
             # compute steering angle
             steering_angle = self.compute_steering_angle(target)
 
-            control = carla.VehicleControl()
-            control.throttle = 0.3  # or adaptive
-            max_steer_angle = self.ego_vehicle.get_physics_control().wheels[0].max_steer_angle 
-            control.steer = np.clip(steering_angle / max_steer_angle, -1.0, 1.0)
-            print(control.steer)
+            throttle = 0.4
+            steering_angle = np.clip(steering_angle, -1.0, 1.0)
+            control = carla.VehicleControl(throttle=throttle, steer=steering_angle)
             self.ego_vehicle.apply_control(control)
 
         else:
