@@ -3,7 +3,7 @@ import numpy as np
 import config as cfg 
 import math
 import cv2
-
+from typing import List
 
 class BEV():
     def __init__(self, camera_spawnpoint):
@@ -22,6 +22,8 @@ class BEV():
         # Image size
         self.bev_width  = int((self.y_range[1] - self.y_range[0]) / self.resolution)   # columns
         self.bev_height = int((self.x_range[1] - self.x_range[0]) / self.resolution)   # rows
+
+        self.BGR_colors = [(0, 255, 0), (0, 0, 255), (255, 255, 255), (0, 255, 255), (255, 0, 0)]
 
 
     def get_vehicle_to_camera_matrix(self, camera_spawnpoint):
@@ -110,7 +112,7 @@ class BEV():
         return points_vehicle
     
 
-    def pixel_to_rear(self, lanes_list_processed, image_depth, rear_axle_offset):
+    def pixel_to_rear(self, lanes_list_processed, image_depth, rear_axle_offset) -> List[np.ndarray]:
         lanes_rear = []
 
         for i in range(len(lanes_list_processed)):
@@ -123,49 +125,51 @@ class BEV():
                 ys = points_rear[:, 1]
                 pts = np.stack([xs, ys], axis=1) # (N, 2)
             else:
-                pts = []
+                pts = np.array([])
             lanes_rear.append(pts)
         
         return lanes_rear
 
 
-    def vehicle_to_bev(self, xs, ys):
+    def rear_to_bev(self, xs, ys):
         us = ((ys - self.y_range[0]) / self.resolution).astype(np.int32)  # left to right becomes u=0 to width
         vs = ((self.x_range[1] - xs) / self.resolution).astype(np.int32)  # front to back becomes v=0 to height
         return us, vs
 
 
-    def get_bev_view(self, lanes_list_processed, image_depth):
+    def get_bev_view(self, lanes_rear: List[np.ndarray], target):
+        """
+        lanes_rear should have 5 lanes: outer left, left, centerline, right, outer right
+        """
         bev_image = np.zeros((self.bev_height, self.bev_width, 3), dtype=np.uint8)
 
-        u0, v0 = self.vehicle_to_bev(np.array([0]), np.array([0]))
-        cv2.circle(bev_image, center=(u0[0], v0[0]), radius=3, color=(0, 0, 255), thickness=-1)     
+        # rear axle origin
+        u0, v0 = self.rear_to_bev(np.array([0]), np.array([0]))
+        cv2.circle(bev_image, center=(u0[0], v0[0]), radius=3, color=(0, 0, 255), thickness=-1)  
 
-        for i in range(len(lanes_list_processed)):
-            if lanes_list_processed[i]:
-                points_2d = np.array(lanes_list_processed[i])
-                points_camera = self.pixel_to_camera(points_2d, image_depth)
-                points_vehicle = self.camera_to_vehicle(points_camera) # (N, 3)
+        # target
+        ut, vt = self.rear_to_bev(np.array([target[0]]), np.array([target[1]]))
+        cv2.circle(bev_image, center=(ut[0], vt[0]), radius=3, color=(0, 255, 0), thickness=-1)     
 
-                xs = points_vehicle[:, 0]
-                ys = points_vehicle[:, 1]
+        for i in range(len(lanes_rear)):
+            points_rear = lanes_rear[i]
+            if points_rear.size != 0:
+                xs = points_rear[:, 0]
+                ys = points_rear[:, 1]
 
-                # mask = (
-                #     (xs >= self.x_range[0]) & (xs <= self.x_range[1]) &
-                #     (ys >= self.y_range[0]) & (ys <= self.y_range[1])
-                # )
+                mask = (
+                    (xs >= self.x_range[0]) & (xs <= self.x_range[1]) &
+                    (ys >= self.y_range[0]) & (ys <= self.y_range[1])
+                )
 
-                # xs_valid = xs[mask]
-                # ys_valid = ys[mask]
+                xs_valid = xs[mask]
+                ys_valid = ys[mask]
 
-                # us, vs = self.vehicle_to_bev(xs_valid, ys_valid)
-                # pts = np.stack([us, vs], axis=1)               # shape (N, 2)
-                # pts = pts.reshape((-1, 1, 2)).astype(np.int32) # shape (N, 1, 2), int32 type
+                us, vs = self.rear_to_bev(xs_valid, ys_valid)
+                pts = np.stack([us, vs], axis=1)               # shape (N, 2)
+                pts = pts.reshape((-1, 1, 2)).astype(np.int32) # shape (N, 1, 2), int32 type
 
-                # cv2.polylines(bev_image, [pts], isClosed=False, color=(255, 255, 255), thickness=1)                
+                cv2.polylines(bev_image, [pts], isClosed=False, color=self.BGR_colors[i], thickness=1)                
 
         cv2.imshow("BEV", bev_image)
         cv2.waitKey(1)
-
-        return bev_image
-

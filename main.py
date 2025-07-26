@@ -28,7 +28,7 @@ class CarlaGame():
         self.tm = self.client.get_trafficmanager()
 
         self.vehicle_manager = VehicleManager(self.client, self.world, self.tm)
-        self.ego_vehicle = self.vehicle_manager.spawn_ego_vehicle()
+        self.ego_vehicle = self.vehicle_manager.spawn_ego_vehicle(autopilot=False)
 
         blueprint_library = self.world.get_blueprint_library()
         # Spawn rgb-cam and attach to vehicle
@@ -70,8 +70,7 @@ class CarlaGame():
             self.lanemarkings = LaneMarkings(self.client, self.world)
 
         wheelbase, rear_axle_offset = self.vehicle_manager.get_ego_vehicle_wheel()
-        self.pure_pursuit = PurePursuit(self.camera_spawnpoint, wheelbase, rear_axle_offset)
-        print(wheelbase, rear_axle_offset)
+        self.pure_pursuit = PurePursuit(self.camera_spawnpoint, wheelbase, rear_axle_offset, self.ego_vehicle)
 
 
     def reshape_image(self, image):

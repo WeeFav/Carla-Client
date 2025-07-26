@@ -1,5 +1,6 @@
 import carla
 import random
+import numpy as np
 import config as cfg
 
 class VehicleManager():
@@ -18,12 +19,12 @@ class VehicleManager():
         self.respawn_interval = cfg.respawn * cfg.fps
 
 
-    def spawn_ego_vehicle(self):
+    def spawn_ego_vehicle(self, autopilot):
         # Spawn ego vehicle
         bp_ego_vehicle = random.choice(self.blueprint_library.filter('vehicle.ford.mustang'))
         bp_ego_vehicle.set_attribute('role_name', 'hero')
         self.ego_vehicle = self.world.spawn_actor(bp_ego_vehicle, random.choice(self.spawn_points))
-        self.ego_vehicle.set_autopilot(True, self.tm.get_port())
+        self.ego_vehicle.set_autopilot(autopilot, self.tm.get_port())
         self.tm.update_vehicle_lights(self.ego_vehicle, True)
 
         return self.ego_vehicle
@@ -88,16 +89,24 @@ class VehicleManager():
 
 
     def get_ego_vehicle_wheel(self):
-        [front_left_wheel, front_right_wheel, back_left_wheel, back_right_wheel] = self.ego_vehicle.get_physics_control().wheels
+        """
+        return wheelbase, rear_axle_offset in vehicle frame
+        """
+        world_to_vehicle_matrix = np.array(self.ego_vehicle.get_transform().get_inverse_matrix()) 
+
+        [front_left_world, front_right_world, back_left_world, back_right_world] = self.ego_vehicle.get_physics_control().wheels
+
+        front_left_world = np.array([front_left_world.position.x / 100, front_left_world.position.y / 100, front_left_world.position.z / 100, 1]) # wheels are in cm in world frame
+        back_left_world = np.array([back_left_world.position.x / 100, back_left_world.position.y / 100, back_left_world.position.z / 100, 1])
+
+        front_left_world = world_to_vehicle_matrix @ front_left_world
+        back_left_world = world_to_vehicle_matrix @ back_left_world
+
+        front_left_vehicle = front_left_world[:3]  # x, y, z in vehicle frame
+        back_left_vehicle = back_left_world[:3]
         
-        print(front_left_wheel.position.x, front_left_wheel.position.y)
-        print(front_right_wheel.position.x, front_right_wheel.position.y)
-        print(back_left_wheel.position.x, back_left_wheel.position.y)
-        print(back_right_wheel.position.x, back_right_wheel.position.y)
+        wheelbase = front_left_vehicle[0] - back_left_vehicle[0]
+        rear_axle_offset = -back_left_vehicle[0]
 
-        assert False
-
-        wheelbase = front_left_wheel.position.x - back_left_wheel.position.x
-        rear_axle_offset = -back_left_wheel.position.x
         return wheelbase, rear_axle_offset
 
