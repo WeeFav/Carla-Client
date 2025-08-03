@@ -44,7 +44,8 @@ class CarlaSyncMode(object):
 
         make_queue(self.world.on_tick)
         for sensor in self.sensors:
-            make_queue(sensor.listen)
+            if sensor: # camera_semseg could be None
+                make_queue(sensor.listen)
         return self
 
     def tick(self, timeout):
