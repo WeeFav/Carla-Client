@@ -86,7 +86,8 @@ def get_bboxes(world, pointcloud, sensor_lidar):
 
     world_to_lidar_mat = np.array(sensor_lidar.transform.get_inverse_matrix())
 
-    bboxes = []
+    lidar_bboxes = []
+    labels = []
     
     for vehicle in world.get_actors().filter('*vehicle*'):
         # Skip ego vehicle
@@ -126,12 +127,7 @@ def get_bboxes(world, pointcloud, sensor_lidar):
             else:
                 object_type = 'Car'
 
-            bboxes.append({
-                'corners_lidar': corners_lidar,
-                'object_type': object_type,
-                'bottom_center': bottom_center,
-                'dims': np.array([height, width, length]),
-                'rotation_z': yaw
-            })
+            lidar_bboxes.append(np.concatanate([bottom_center, np.array([height, width, length, yaw])], axis=0))
+            labels.append(object_type)
     
-    return bboxes
+    return np.array(lidar_bboxes), np.array(labels) # (N, 7), (N,)

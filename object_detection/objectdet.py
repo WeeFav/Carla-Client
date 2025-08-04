@@ -64,7 +64,16 @@ class ObjDet():
         with torch.no_grad():
             pc_torch = pc_torch.cuda()
             result_filter = self.model(batched_pts=[pc_torch], mode='test')[0]
+            """
+            result_filter = {
+                bboxes: [(k1, 7), (k2, 7), ... ] (N, 7)
+                labels: [(k1, ), (k2, ), ... ] (N,)
+                scores: [(k1, ), (k2, ), ... ] (N,)
+            } 
+            """
         
         result_filter = self.keep_bbox_from_lidar_range(result_filter, self.pcd_limit_range)
-        lidar_bboxes = result_filter['lidar_bboxes']
-        labels, scores = result_filter['labels'], result_filter['scores']
+        lidar_bboxes = result_filter['lidar_bboxes'] # (N, 7)
+        labels, scores = result_filter['labels'], result_filter['scores'] # (N,)
+
+        return lidar_bboxes, labels

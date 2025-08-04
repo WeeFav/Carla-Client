@@ -204,9 +204,9 @@ class CarlaGame():
 
                     ### Predict objects ###
                     if cfg.predict_object:
-                        bboxes = self.objectdet.predict(pointcloud)
+                        lidar_bboxes, labels = self.objectdet.predict(pointcloud)
                     else:
-                        bboxes = gt_bbox.get_bboxes(pointcloud, sensor_lidar)
+                        lidar_bboxes, labels = gt_bbox.get_bboxes(pointcloud, sensor_lidar)
 
 
                     if not cfg.carla_auto_pilot:
