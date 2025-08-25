@@ -1,15 +1,15 @@
 import numpy as np
 import torch
 
-from .pointpillars import PointPillars
+from pointpillars.model.pointpillars import PointPillars
 from . import objectdet_config as cfg
 
 class ObjDet():
     def __init__(self):
         CLASSES = {
-            'Pedestrian': 0, 
-            'Cyclist': 1, 
-            'Car': 2
+            'Car': 0,
+            'Large': 1,
+            'Motorcycle': 2 
         }
         LABEL2CLASSES = {v:k for k, v in CLASSES.items()}
         self.pcd_limit_range = np.array([0, -40, -3, 70.4, 40, 0.0], dtype=np.float32)
@@ -19,7 +19,7 @@ class ObjDet():
         self.model.eval()
 
 
-    def point_range_filter(self, pts, point_range=[0, -39.68, -3, 69.12, 39.68, 1]):
+    def point_range_filter(self, pts, point_range=[-70.4, -40.0, -3, 70.4, 40.0, 1]):
         flag_x_low = pts[:, 0] > point_range[0]
         flag_y_low = pts[:, 1] > point_range[1]
         flag_z_low = pts[:, 2] > point_range[2]
@@ -72,8 +72,14 @@ class ObjDet():
             } 
             """
         
-        result_filter = self.keep_bbox_from_lidar_range(result_filter, self.pcd_limit_range)
-        lidar_bboxes = result_filter['lidar_bboxes'] # (N, 7)
-        labels, scores = result_filter['labels'], result_filter['scores'] # (N,)
+        # result_filter = self.keep_bbox_from_lidar_range(result_filter, self.pcd_limit_range)
+        if result_filter is not None:
+            lidar_bboxes = result_filter['lidar_bboxes'] # (N, 7)
+            lidar_bboxes = lidar_bboxes[:, [0, 1, 2, 5, 3, 4, 6]] # wlh -> hwl
+            
+            labels, scores = result_filter['labels'], result_filter['scores'] # (N,)
+        else:
+            lidar_bboxes = []
+            labels = []
 
         return lidar_bboxes, labels

@@ -1,1 +1,1 @@
-model_path = "./lane_detection/ep099.pth"
+model_path = "object_detection/epoch_160.pth"

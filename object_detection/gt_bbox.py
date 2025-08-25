@@ -95,13 +95,13 @@ def get_bboxes(world, pointcloud, sensor_lidar):
         if role_name == "hero":
             continue
 
-        # Skip vehicle with distance > 120 m
+        # Skip vehicle with distance > 100 m
         bb = vehicle.bounding_box
         center_vehicle = np.array([bb.location.x, bb.location.y, bb.location.z, 1.0])
         vehicle_to_world_mat = np.array(vehicle.get_transform().get_matrix())
         center_world = vehicle_to_world_mat @ center_vehicle
         center_lidar = (world_to_lidar_mat @ center_world)[:3]
-        if np.linalg.norm(center_lidar) > 120:
+        if np.linalg.norm(center_lidar) > 100:
             continue
         
         corners_lidar = get_corners(vehicle, world_to_lidar_mat)

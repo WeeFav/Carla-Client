@@ -8,7 +8,7 @@ cls_num_per_lane = 56 # number of row anchors
 num_lanes = 4
 num_cls = 4
 backbone = '18'
-model_path = "./lane_detection/ep099.pth"
+model_path = "./lane_detection/ep049.pth"
 use_classification = True
 
 carla_row_anchor = [ 64,  68,  72,  76,  80,  84,  88,  92,  96, 100, 104, 108, 112,

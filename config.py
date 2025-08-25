@@ -1,7 +1,7 @@
 import carla
 
 # Camera
-fps = 20
+fps = 10
 image_width = 1280
 image_height = 720
 fov = 90
@@ -19,8 +19,8 @@ for y in range(row_anchor_start, image_height, 10):
 	h_samples.append(y)
 
 # World
-town = 'Town04_Opt'
-num_vehicles = 0
+town = 'Town10HD_Opt'
+num_vehicles = 50
 # weather = carla.WeatherParameters(
 # 	cloudiness=0,
 # 	precipitation=0,
@@ -35,6 +35,6 @@ weather = carla.WeatherParameters.ClearNoon
 # Mode
 auto_run = True
 respawn = 50 # in seconds
-carla_auto_pilot = False
-predict_lane = True
+carla_auto_pilot = True
+predict_lane = False
 predict_object = True

@@ -2,7 +2,7 @@ import numpy as np
 from typing import List
 from scipy.interpolate import interp1d
 import carla
-from bev import BEV
+from .bev import BEV
 
 class PurePursuit():
     def __init__(self, camera_spawnpoint, wheelbase, rear_axle_offset, ego_vehicle):
@@ -80,15 +80,13 @@ class PurePursuit():
         return steering_angle
     
 
-    def run(self, lanes_list_processed, image_depth):
+    def run(self, lanes_list_processed, image_depth, speed):
         lanes_rear = self.bev.pixel_to_rear(lanes_list_processed, image_depth, self.rear_axle_offset)
         centerline = self.get_centerline(lanes_rear[1], lanes_rear[2], None) # ego lanes
         lanes_rear.insert(2, centerline)
 
         if len(centerline) > 0:
             # compute lookahead distance
-            vel = self.ego_vehicle.get_velocity()
-            speed = np.linalg.norm(np.array([vel.x, vel.y, vel.z]))
             ld = self.get_lookahead_distance(speed)
 
             # find target point
@@ -97,13 +95,10 @@ class PurePursuit():
 
             # compute steering angle
             steering_angle = self.compute_steering_angle(target)
-
-            throttle = 0.4
-            steering_angle = np.clip(steering_angle, -1.0, 1.0)
-            control = carla.VehicleControl(throttle=throttle, steer=steering_angle)
-            self.ego_vehicle.apply_control(control)
+            return np.clip(steering_angle, -1.0, 1.0)
 
         else:
             print("NOT CONTROLLING")
+            return 0
 
 
