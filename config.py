@@ -37,4 +37,4 @@ auto_run = True
 respawn = 50 # in seconds
 carla_auto_pilot = True
 predict_lane = False
-predict_object = True
+predict_object = False
