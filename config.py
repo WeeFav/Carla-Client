@@ -10,7 +10,7 @@ fov = 90
 meters_per_frame = 1.0
 number_of_lanepoints = 80
 junctionMode = True
-render_lanes = True
+render_lanes = False
 draw3DLanes = False
 
 row_anchor_start = 160
