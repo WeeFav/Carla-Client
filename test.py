@@ -22,6 +22,7 @@ class CarlaGame():
         self.font = pygame.font.SysFont('Arial', 36) 
 
         self.client = carla.Client('localhost', 2000)
+        self.client.set_timeout(30.0)
         self.world = self.client.load_world(cfg.town)
         self.map = self.world.get_map()
         self.world.set_weather(cfg.weather)
