@@ -1,119 +1,125 @@
+import glob
+import os
+import sys
 import carla
 import random
-import cv2
-import numpy as np
-import sys
 import pygame
-import os
-import argparse
-from PIL import Image
-import time
-import math
-import open3d as o3d
-
-import config as cfg
+import numpy as np
 from carla_sync_mode import CarlaSyncMode
-from vehicle_manager import VehicleManager
-
-class CarlaGame():
-    def __init__(self):
-        self.display = pygame.display.set_mode((cfg.image_width, cfg.image_height), pygame.HWSURFACE | pygame.DOUBLEBUF)
-        self.pygame_clock = pygame.time.Clock()
-        self.font = pygame.font.SysFont('Arial', 36) 
-
-        self.client = carla.Client('localhost', 2000)
-        self.client.set_timeout(30.0)
-        self.world = self.client.load_world(cfg.town)
-        self.map = self.world.get_map()
-        self.world.set_weather(cfg.weather)
-        self.tm = self.client.get_trafficmanager()
-
-        self.vehicle_manager = VehicleManager(self.client, self.world, self.tm)
-        self.ego_vehicle = self.vehicle_manager.spawn_ego_vehicle(autopilot=cfg.carla_auto_pilot)
-
-        blueprint_library = self.world.get_blueprint_library()
-        # Spawn rgb-cam and attach to vehicle
-        bp_camera_rgb = blueprint_library.find('sensor.camera.rgb')
-        bp_camera_rgb.set_attribute('image_size_x', f'{cfg.image_width}')
-        bp_camera_rgb.set_attribute('image_size_y', f'{cfg.image_height}')
-        bp_camera_rgb.set_attribute('fov', f'{cfg.fov}')
-        self.camera_spawnpoint = carla.Transform(carla.Location(x=1.0, z=2.0), carla.Rotation(pitch=-18.5)) # camera 5
-        self.camera_rgb = self.world.spawn_actor(bp_camera_rgb, self.camera_spawnpoint, attach_to=self.ego_vehicle)
-
-        # Spawn lidar and attach to vehicle
-        bp_lidar = blueprint_library.find("sensor.lidar.ray_cast")
-        bp_lidar.set_attribute("range", "120") # 120 meter range for cars and foliage
-        bp_lidar.set_attribute("rotation_frequency", "10")
-        bp_lidar.set_attribute("channels", "64") # vertical resolution of the laser scanner is 64
-        bp_lidar.set_attribute("points_per_second", "1300000")
-        bp_lidar.set_attribute("upper_fov", "2.0") # +2 up to -24.8 down
-        bp_lidar.set_attribute("lower_fov", "-24.8")
-        self.lidar_spawnpoint = carla.Transform(carla.Location(x=0, y=0, z=1.73))
-        self.lidar = self.world.spawn_actor(bp_lidar, self.lidar_spawnpoint, attach_to=self.ego_vehicle)
-
-        self.RGB_colors = [(0, 255, 0), (255, 0, 0), (255, 255, 0), (0, 0, 255)]
-        self.BGR_colors = [(0, 255, 0), (0, 0, 255), (0, 255, 255), (255, 0, 0)]
-        
-        # Create opencv window
-        cv2.namedWindow("inst_background", cv2.WINDOW_NORMAL)
-        cv2.resizeWindow("inst_background", 640, 360)
 
 
-    def reshape_image(self, image):
-        array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
-        array = np.reshape(array, (image.height, image.width, 4)) # BGRA
-        array = array[:, :, :3] # BGR
-        array = array[:, :, ::-1] # RGB
-        return array # (H, W, C)
+def draw_image(surface, image, blend=False):
+    array = np.frombuffer(image.raw_data, dtype=np.dtype("uint8"))
+    array = np.reshape(array, (image.height, image.width, 4))
+    array = array[:, :, :3]
+    array = array[:, :, ::-1]
+    image_surface = pygame.surfarray.make_surface(array.swapaxes(0, 1))
+    if blend:
+        image_surface.set_alpha(100)
+    surface.blit(image_surface, (0, 0))
 
 
-    def reshape_pointcloud(self, pointcloud):
-        array = np.frombuffer(pointcloud.raw_data, dtype=np.float32)
-        array = np.reshape(array, (-1, 4)).copy() # x, y, z, r
-        return array # (N, 4) pointcloud
-    
-
-    def draw_image(self, surface, array, blend=False):
-        image_surface = pygame.surfarray.make_surface(array.swapaxes(0, 1)) # (W, H, C)
-        if blend:
-            image_surface.set_alpha(100)
-        surface.blit(image_surface, (0, 0))
+def get_font():
+    fonts = [x for x in pygame.font.get_fonts()]
+    default_font = 'ubuntumono'
+    font = default_font if default_font in fonts else fonts[0]
+    font = pygame.font.match_font(font)
+    return pygame.font.Font(font, 14)
 
 
-    def render_display(self, image_rgb):
-        # Draw the display.
-        self.draw_image(self.display, image_rgb)
-    
-        pygame.display.flip()
+def should_quit():
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            return True
+        elif event.type == pygame.KEYUP:
+            if event.key == pygame.K_ESCAPE:
+                return True
+    return False
 
 
-    def run(self):
-        with CarlaSyncMode(self.world, self.tm, self.camera_rgb, self.lidar, fps=cfg.fps) as sync_mode:
-            try:
-                while True:                    
-                    ### Run simulation ###
-                    self.pygame_clock.tick()
-                    snapshot, sensor_rgb, sensor_lidar = sync_mode.tick(timeout=1.0)
-                    
-                    image_rgb = self.reshape_image(sensor_rgb)
-                    pointcloud = self.reshape_pointcloud(sensor_lidar)
+def main():
+    actor_list = []
+    pygame.init()
 
-                    ### Render display ###
-                    pointcloud[:, 1] = -pointcloud[:, 1] # convert from UE to Kitti/Open3D
-                    self.render_display(image_rgb)
+    display = pygame.display.set_mode(
+        (800, 600),
+        pygame.HWSURFACE | pygame.DOUBLEBUF)
+    font = get_font()
+    clock = pygame.time.Clock()
 
-            finally:
-                self.vehicle_manager.destroy()
-                for sensor in sync_mode.sensors:
-                    if sensor:
-                        sensor.destroy()
-                print("Sensors destroyed")
+    client = carla.Client('localhost', 2000)
+    client.set_timeout(2.0)
+
+    world = client.get_world()
+
+    try:
+        m = world.get_map()
+        start_pose = random.choice(m.get_spawn_points())
+        waypoint = m.get_waypoint(start_pose.location)
+
+        blueprint_library = world.get_blueprint_library()
+
+        vehicle = world.spawn_actor(
+            random.choice(blueprint_library.filter('vehicle.*')),
+            start_pose)
+        actor_list.append(vehicle)
+        vehicle.set_simulate_physics(False)
+
+        camera_rgb = world.spawn_actor(
+            blueprint_library.find('sensor.camera.rgb'),
+            carla.Transform(carla.Location(x=-5.5, z=2.8), carla.Rotation(pitch=-15)),
+            attach_to=vehicle)
+        actor_list.append(camera_rgb)
+
+        camera_semseg = world.spawn_actor(
+            blueprint_library.find('sensor.camera.semantic_segmentation'),
+            carla.Transform(carla.Location(x=-5.5, z=2.8), carla.Rotation(pitch=-15)),
+            attach_to=vehicle)
+        actor_list.append(camera_semseg)
+
+        # Create a synchronous mode context.
+        with CarlaSyncMode(world, camera_rgb, camera_semseg, fps=30) as sync_mode:
+            while True:
+                if should_quit():
+                    return
+                clock.tick()
+
+                # Advance the simulation and wait for the data.
+                snapshot, image_rgb, image_semseg = sync_mode.tick(timeout=2.0)
+
+                # Choose the next waypoint and update the car location.
+                waypoint = random.choice(waypoint.next(1.5))
+                vehicle.set_transform(waypoint.transform)
+
+                image_semseg.convert(carla.ColorConverter.CityScapesPalette)
+                fps = round(1.0 / snapshot.timestamp.delta_seconds)
+
+                # Draw the display.
+                draw_image(display, image_rgb)
+                draw_image(display, image_semseg, blend=True)
+                display.blit(
+                    font.render('% 5d FPS (real)' % clock.get_fps(), True, (255, 255, 255)),
+                    (8, 10))
+                display.blit(
+                    font.render('% 5d FPS (simulated)' % fps, True, (255, 255, 255)),
+                    (8, 28))
+                pygame.display.flip()
+
+    finally:
+
+        print('destroying actors.')
+        for actor in actor_list:
+            actor.destroy()
+
+        pygame.quit()
+        print('done.')
 
 
 if __name__ == '__main__':
-    pygame.init()
 
-    game = CarlaGame()
-    game.run()
+    try:
 
-    pygame.quit()
+        main()
+
+    except KeyboardInterrupt:
+        print('\nCancelled by user. Bye!')

@@ -22,7 +22,7 @@ class CarlaSyncMode(object):
         self.tm = tm
         self.sensors = sensors
         self.frame = None
-        self.delta_seconds = 1.0 / kwargs.get('fps', cfg.fps)
+        self.delta_seconds = 1.0 / kwargs.get('fps', 20)
         self._queues = []
         self._settings = None # save the inital settings so that when we leave CarlaSyncMode, we can restore it
 

@@ -12,5 +12,6 @@ pip install pygame numpy opencv-python pillow open3d
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 pip install carla-0.9.15-cp310-cp310-manylinux_2_27_x86_64.whl
 
-wget https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64
-sudo apt install ./code_1.116.0-1776214182_amd64.deb
+wget https://update.code.visualstudio.com/1.116.0/linux-deb-x64/stable
+mv stable vscode.deb
+sudo apt install ./vscode.deb
